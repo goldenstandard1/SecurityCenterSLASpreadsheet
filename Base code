@@ -13,8 +13,8 @@ try:
     cookie = login.cookies
     tkn = login.json()["response"]["token"]
     hdrs = {"X-SecurityCenter":str(tkn),"Content-Type":"application/json"}
-    #Change "un" to your windows login
-    directory = r"C:\Users\un\Desktop\iHosts"
+    #Change "un" to your windows login/username
+    directory = r"C:\Users\un\Desktop\iPAdresses"
     dirlist = os.listdir(directory)
     todayDate = datetime.today()
     #Creating the Workbook
