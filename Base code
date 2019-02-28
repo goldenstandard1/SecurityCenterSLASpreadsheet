@@ -5,7 +5,9 @@ from datetime import datetime
 import csv
 import os
 try:
+    #Change the un value to your Security Center Login Username
     un = "**" 
+    #Replace the ** with the hostname/url of your Tenable instance
     sc = "https://**/rest/"
     login = requests.post(sc+"token", json = {"username":un, "password":getpass("Password:\n")},verify=False)
     cookie = login.cookies
