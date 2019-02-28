@@ -1,0 +1,102 @@
+import requests
+from getpass import getpass
+from xlsxwriter import *
+from datetime import datetime
+import csv
+import os
+try:
+    un = "**" 
+    sc = "https://**/rest/"
+    login = requests.post(sc+"token", json = {"username":un, "password":getpass("Password:\n")},verify=False)
+    cookie = login.cookies
+    tkn = login.json()["response"]["token"]
+    hdrs = {"X-SecurityCenter":str(tkn),"Content-Type":"application/json"}
+    #Change "un" to your windows login
+    directory = r"C:\Users\un\Desktop\iHosts"
+    dirlist = os.listdir(directory)
+    todayDate = datetime.today()
+    #Creating the Workbook
+    workbook = Workbook(r"C:\Users\**\Desktop\PythonOutputTest\TestMastersheet.xlsx")
+    wrap = workbook.add_format({'text_wrap': True})
+    for file in dirlist:
+        sheetrow = 1
+        filename = file.split('.')[0]
+        fullpath = os.path.join(directory,file)
+        hosts = csv.reader(open(fullpath),delimiter=",")
+        filterhosts = ""
+        for row in hosts:
+            if filterhosts == "":
+                filterhosts = row[0]
+            else:
+                filterhosts = filterhosts + ",%s" % row[0]
+        #Creating the Worksheets
+        wrap = workbook.add_format({'text_wrap': True})
+        worksheet = workbook.add_worksheet(filename)
+        #Getting the Data from Security Center:
+        #This loop contains the Security Center filters for vulnerability severity. "4" is Critical and "3" is High. 
+        #We can add another elif with "2"  to add medium  vulnerability (other changes will have to be made for that as well).  
+        for i in range(3,5):
+            if i == 3:
+                dayDifferenceBetweenNowAndSLA = 90 
+            elif i == 4:
+                dayDifferenceBetweenNowAndSLA = 60 
+            SCQuery = requests.post(sc+"analysis", headers = hdrs, cookies = cookie, verify = False,\
+                                json = {"type":"vuln","sourceType":"cumulative",\
+                                        "query":{"type":"vuln","startOffset":0,"endOffset":10000,"tool":"vulnipsummary",\
+                                                    "filters":[{"filterName":"severity","operator":"=","value":"%s" % i},\
+                                                            {"filterName":"firstSeen","operator":"=","value":"%s:all" % dayDifferenceBetweenNowAndSLA},\
+                                                            {"filterName":"ip","operator":"=","value":filterhosts}]}})
+            results = SCQuery.json()["response"]["results"]
+            #Creating the Worksheets
+            worksheet.write(0,0,"Severity")
+            worksheet.write(0,1,"Plugin ID")
+            worksheet.write(0,2,"Name")
+            worksheet.write(0,3,"DNS Name")
+            worksheet.write(0,4,"First Seen Date")
+            worksheet.write(0,5,"Days Exceeded \nPVM Policy")
+            worksheet.set_column('C:D',70)
+            worksheet.set_column('D:D',40)
+            worksheet.set_column('E:E',15)
+            #Populating Complete Vulnerability List
+            for v in results:
+                fqdn_req = requests.post(sc+"analysis", headers = hdrs, cookies = cookie, verify = False,\
+                                json = {"type":"vuln","sourceType":"cumulative",\
+                                        "query":{"type":"vuln","startOffset":0,"endOffset":10000,"tool":"vulndetails",\
+                                                    "filters":[{"filterName":"firstSeen","operator":"=","value":"%s:all" % dayDifferenceBetweenNowAndSLA},\
+                                                            {"filterName":"ip","operator":"=","value":filterhosts},\
+                                                            {"filterName":"pluginID","operator":"=","value":v["pluginID"]}]}})
+                fqdn_res = fqdn_req.json()["response"]["results"]
+                #Filtering to include all dns names in a single cell
+                dns_cell = ""
+                earliestSeen = ""
+                earliestcomplexdate = ""
+                for h in fqdn_res:
+                    if dns_cell == "":
+                        dns_cell = h["dnsName"]
+                    else:
+                        dns_cell = dns_cell + '\n' + h["dnsName"]
+                    complexdate = int(h["firstSeen"])
+                    shortdate = datetime.strftime(datetime.fromtimestamp(complexdate),"%m/%d/%Y")
+                    if earliestcomplexdate == "":
+                        earliestcomplexdate = int(h["firstSeen"])
+                        earliestSeen = shortdate
+                    elif complexdate < earliestcomplexdate:
+                        earliestcomplexdate = complexdate
+                        earliestSeen = shortdate
+                if i == 3:
+                    dayspastsla = (todayDate - datetime.strptime(earliestSeen,"%m/%d/%Y")).days - 90
+                elif i == 4:
+                    dayspastsla = (todayDate - datetime.strptime(earliestSeen,"%m/%d/%Y")).days - 60
+                worksheet.write(sheetrow,0,v['severity']['name'])
+                worksheet.write(sheetrow,1,v['pluginID'])
+                worksheet.write(sheetrow,2,v['name'])
+                worksheet.write(sheetrow,3,dns_cell,wrap)
+                worksheet.write(sheetrow,4,earliestSeen)
+                worksheet.write(sheetrow,5,dayspastsla)
+                sheetrow += 1
+    workbook.close()
+except Exception as error:
+    print (error)
+    print("Please review the error message above, then refer to the SOP for further instruction.")
+else:
+    print("The script has completed successfuly")
